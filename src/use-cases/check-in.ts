@@ -1,6 +1,9 @@
 import { CheckinsRepository } from "@/repositories/check-ins-repository";
 import { GymsRepository } from "@/repositories/gym-repositoriy";
+import { getDistanceBetweenCoordinates } from "@/utils/get-distance-between-coordinate";
 import { CheckIn } from "@prisma/client";
+import { MaxDistanceError } from "./errors/max-distance-error";
+import { MaxNumberOfCheckInsError } from "./errors/max-number-of-check-ins-error";
 import { ResorceNotFoundError } from "./errors/resolce-not-found-error";
 
 interface CheckinUseCaseRequest {
@@ -23,11 +26,30 @@ export class CheckinUseCase {
   async execute({
     gymId,
     userId,
+    userLatitude,
+    userLongitude,
   }: CheckinUseCaseRequest): Promise<CheckinUseCaseResponse> {
     const gym = await this.gymsRepository.findById(gymId);
 
     if (!gym) {
       throw new ResorceNotFoundError();
+    }
+
+    const distance = getDistanceBetweenCoordinates(
+      {
+        latitude: userLatitude,
+        longitude: userLongitude,
+      },
+      {
+        latitude: gym.latitude.toNumber(),
+        longitude: gym.longitude.toNumber(),
+      }
+    );
+
+    const MAX_DISTANCE_IN_KILOMETERS = 0.1;
+
+    if (distance > MAX_DISTANCE_IN_KILOMETERS) {
+      throw new MaxDistanceError();
     }
 
     const checkinOnSameDay = await this.checkinsRepository.findByUserIdOnDate(
@@ -36,7 +58,7 @@ export class CheckinUseCase {
     );
 
     if (checkinOnSameDay) {
-      throw new Error();
+      throw new MaxNumberOfCheckInsError();
     }
 
     const checkin = await this.checkinsRepository.create({
